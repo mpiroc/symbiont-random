@@ -1,10 +1,13 @@
 import * as readline from 'readline'
 import * as stream from 'stream'
 
+const MAX_STORED_BITS_OF_ENTROPY: number = 1024
 const BITS_PER_BYTE: number = 8
 
 export class EntropyStream extends stream.Readable {
-    // TODO: Use a Queue instead.
+    // It would be more memory-efficient to use a Uint8Array, rather than a separate boolean
+    // for each bit. But the implementation is a bit simpler this way, and we can optimize later
+    // if necessary.
     private _entropy: boolean[] = []
     private _isReading: boolean = false
 
@@ -24,11 +27,19 @@ export class EntropyStream extends stream.Readable {
                 process.exit()
             }
 
-            // NOTE: This is insecure--the timestamp isn't the true time that the key was pressed, but the
-            // time that this event handler runs, which is (potentially?) predictable by an attacker. We
-            // can't access the drivers directly like the OS can, so this isn't a perfect port of /dev/random.
+            // Prevent memory leak in the case that the stream is never consumed.
+            if (this._entropy.length >= MAX_STORED_BITS_OF_ENTROPY) {
+                return
+            }
+
+            // NOTE 1: This is insecure--the timestamp isn't the true time that the key was pressed, but the
+            //         time that this event handler runs, which is (potentially?) predictable by an attacker.
+            //         We can't access the drivers directly like the OS can, so this isn't a perfect port of
+            //         cat /dev/random.
+            // NOTE 2: By observation, the last two (decimal) digits of process.hrtime.bigint() are always "09".
+            //         So we truncate and use the third-last bit instead.
             const timestamp = process.hrtime.bigint() / 100n
-            
+
             // Array.unshift is like Array.push, but adds elements to the beginning of the array rather than
             // the end. This lets us treat the array like a queue.
             this._entropy.unshift(timestamp % 2n === 0n)

@@ -9,6 +9,9 @@
     "run": "node ./out/bin/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "bin": {
+    "catrandom": "./out/bin/index.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

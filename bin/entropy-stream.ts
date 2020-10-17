@@ -4,6 +4,7 @@ import * as stream from 'stream'
 const BITS_PER_BYTE: number = 8
 
 export class EntropyStream extends stream.Readable {
+    // TODO: Use a Queue instead.
     private _entropy: boolean[] = []
     private _isReading: boolean = false
 
@@ -15,8 +16,8 @@ export class EntropyStream extends stream.Readable {
             input.setRawMode(true)
         }
 
-        input.on('keypress', (_character, _keypress) => {
-            if (_keypress.sequence === "\u0003") {
+        input.on('keypress', (_character, keypress) => {
+            if (keypress.sequence === "\u0003") {
                 // According to https://nodejs.org/api/tty.html#tty_readstream_setrawmode_mode,
                 // streams do not trigger a SIGINT on ctrl+c when in raw mode. So we (roughly)
                 // approximate it by exiting the process.
@@ -27,7 +28,10 @@ export class EntropyStream extends stream.Readable {
             // time that this event handler runs, which is (potentially?) predictable by an attacker. We
             // can't access the drivers directly like the OS can, so this isn't a perfect port of /dev/random.
             const timestamp = process.hrtime.bigint() / 100n
-            this._entropy.push(timestamp % 2n === 0n)
+            
+            // Array.unshift is like Array.push, but adds elements to the beginning of the array rather than
+            // the end. This lets us treat the array like a queue.
+            this._entropy.unshift(timestamp % 2n === 0n)
 
             if (this._isReading) {
                 this.flushBits()
@@ -48,9 +52,11 @@ export class EntropyStream extends stream.Readable {
 
     private flushBits(): void {
         while (this._entropy.length >= BITS_PER_BYTE) {
-            const bits = this._entropy.slice(0, BITS_PER_BYTE)
-            this._entropy = this._entropy.slice(BITS_PER_BYTE)
-
+            const bits: boolean[] = []
+            for (let i = 0; i < BITS_PER_BYTE; i++) {
+                bits.push(this._entropy.pop()!)
+            
+            }
             // TODO: Verify this assumption
             // Assumption: Since the bits are already random, we don't need
             // to use them to seed a PRNG--we can just use them directly.
@@ -59,8 +65,8 @@ export class EntropyStream extends stream.Readable {
                 byte = byte << 1 | (bit ? 1 : 0)
             }
 
-            // `cat` uses utf8 by default, so let's interpret the random bytes
-            // as utf8 for consistency with `cat /dev/random`.
+            // As far as I can tell, /dev/random emits a stream of raw bytes, which
+            // is then interpreted by `cat` as utf8. So let's do the same here.
             if (!this.push(Buffer.from([ byte ]), 'utf8')) {
                 this._isReading = false
                 return

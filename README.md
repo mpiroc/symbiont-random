@@ -1,4 +1,4 @@
-Port of `cat /dev/random` for Aurelion/Symbiont.
+Port of `cat /dev/random` for Aurelien/Symbiont.
 
 To use:
 
